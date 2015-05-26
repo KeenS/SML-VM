@@ -179,7 +179,17 @@ end
 
 structure VM = struct
 
-structure Scope = struct
+structure Scope :
+          sig
+              type t
+              val empty: t
+              val register: t -> string -> string -> t
+              val add: t -> string -> t
+              val find: t -> string -> string option
+              val findId: t -> string -> int
+          end
+= struct
+type t = (string * string) list
 val empty = []
 
 val alpha = let
@@ -235,7 +245,7 @@ fun add (gen as {codes, ...}) code = setCodes gen code::codes
 fun tailPos gen = setTailPos gen true
 fun nonTailPos gen = setTailPos gen false
 fun pushScope (gen as {scopes, ...}) =  setScopeDepth gen ([] ::scope )
-fun popScope (gen as {scopes = scope:: scopes, ...}) =  setScopes gen scopes
+fun popScope (gen as {scopes = scope::scopes, ...}) =  setScopes gen scopes
 fun isGlobalScope {scopes, ...} = (List.len scopes) = 0
 
 fun intern (gen as {scopes = scope::scopes, ...}) name = let
@@ -260,9 +270,9 @@ datatype opcode
   | Ret
   | Push of t
   | Lref of int
-  | Lset of int * t
+  | Lset of int
   | Gref of int
-  | Gset of int * t
+  | Gset of int
   | Nop
 
 
@@ -293,10 +303,20 @@ end
 and doBind gen (A.Var name) value = let
 (* :TODO: interreferencial defiinition *)
     val (gen, id) = C.intern name
+    val gen = compile gen value
 in
+    if C.isGlobalScope
+    then C.add gen (Gset(id))
+    else C.add gen (Gset(id))
 end
   | doBind _ _ _ = raise Type
-and doVar gen name = gen
+
+
+and doVar (gen as {scopes = scope::scopes, ...}) name = let
+    val renamed = Scope.find scope name
+    val id = Scope.findId scope renamed
+in
+end
 
 and doIf gen cnd thn els = gen
 
@@ -307,11 +327,11 @@ and doLambda gen params body = gen
 and doCall gen lambda args = gen
 
 and doProgn gen (exp::exps) = let
-    val gen = compile gen exp
+    val gen = compile (C.nonTailPos gen) exp
 in
     doProgn gen exps
 end
-  | doProgn gen [exps] = 
+  | doProgn gen [exp] = compile (C.tailPos gen) exp
   | doProgn gen [] = raise Fail "progn invalid"
     
 
