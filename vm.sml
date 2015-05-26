@@ -37,7 +37,8 @@ fun toString (Int x) = Int.toString x
                                 " " ^ (toString els) ^ ")"
   | toString (Var name) =  name
   | toString (Lambda(params, body)) = "(lambda (" ^ (String.concatWith " " (List.map toString params))
-                                        ^ ") " ^ (toString body) ^ ")"
+                                      ^ ") " ^ (toString body) ^ ")"
+  | toString (Call(lambda, args)) = "(" ^ (toString lambda) ^ " " ^ (String.concatWith " " (List.map toString args)) ^ ")"
   | toString (Progn(exps)) = "(progn " ^ (String.concatWith " " (List.map toString exps)) ^ ")"
 
 end
@@ -177,7 +178,22 @@ end
 end
 
 
-structure VM = struct
+structure VM =
+struct
+
+structure Id :
+          sig
+              val f: string -> string
+          end
+= struct
+val f = let
+    val id = ref 0
+in
+    fn name => name ^ "@" ^ (Int.toString (! id)) before id := (!id) + 1
+end
+
+
+end
 
 structure Scope :
           sig
@@ -186,20 +202,14 @@ structure Scope :
               val register: t -> string -> string -> t
               val add: t -> string -> t
               val find: t -> string -> string option
-              val findId: t -> string -> int
+              val getId: t -> string -> int
           end
 = struct
 type t = (string * string) list
 val empty = []
 
-val alpha = let
-    val id = ref 0
-in
-    fn name => name ^ "@" ^ (Int.toString (! id)) before id <- (!id) + 1
-end
-
 fun register scope name renamed = (name, renamed) :: scope
-fun add scope name = register scope name (alpha name)
+fun add scope name = register scope name (Id.f name)
 
 fun find [] key = NONE
   | find ((name:string, renamed)::scope) (key:string) =
@@ -207,7 +217,7 @@ fun find [] key = NONE
     then SOME renamed
     else find scope key
 
-fun findId scope (key:string) = let
+fun getId scope (key:string) = let
     fun aux ((_, renamed:string)::scope) i =
       if key = renamed
       then i
@@ -219,61 +229,56 @@ in
 end
 end
 
-
-structure CodeGen = struct
-type t = opcode list
-val empty = {codes = [], scopes = [], tailPos = true}
-fun setCodes {codes, scopes, tailPos} newCodes = {
-    codes = newCodes,
-    scopes = scopes,
-    tailPos = tailPos
-}
-
-fun setScopes {codes, scopeDepth, tailPos} newScopes = {
-    codes = codes,
-    scopes = newScopes,
-    tailPos = tailPos
-}
-
-fun setTailPos {codes, scopes, tailPos} newTailPos = {
-    codes = codes,
-    scopes = scopes,
-    tailPos = newTailPos
-}
-
-fun add (gen as {codes, ...}) code = setCodes gen code::codes
-fun tailPos gen = setTailPos gen true
-fun nonTailPos gen = setTailPos gen false
-fun pushScope (gen as {scopes, ...}) =  setScopeDepth gen ([] ::scope )
-fun popScope (gen as {scopes = scope::scopes, ...}) =  setScopes gen scopes
-fun isGlobalScope {scopes, ...} = (List.len scopes) = 0
-
-fun intern (gen as {scopes = scope::scopes, ...}) name = let
-    val renamed = Scope.alpha name
-    val scope = Scope.register scope name renamed
-    val i = Scope.findId scope renamed
-in
-    ((setScopes gen (scope::scopes)), i)
-end
-
-fun generate {codegen, ...} = List.rev codegen
-end
-
 datatype opcode
   = Not
   | Add
   | Eq
   | Gt
-  | Jump
-  | Jtrue
+  | Jump of string
+  | Jtrue of string
   | Call
   | Ret
-  | Push of t
+  | Push of AST.t
   | Lref of int
   | Lset of int
   | Gref of int
   | Gset of int
   | Nop
+
+structure Block =
+struct
+
+type t = opcode list * string
+
+fun new label = ([], label)
+fun add (ops, label) opcode = (opcode::ops, label)
+end
+
+
+structure CodeGen = struct
+type t = Block.t * Block.t list * Scope.t list
+fun new () = ([Block.new (Id.f "main")], [Scope.empty])
+
+fun pushScope (bs, ss) s =  (bs, s::ss)
+fun popScope (bs, s::ss) =  (bs, ss)
+  | popScope (bs, []) = raise Fail "scope nil"
+fun isGlobalScope (bs, ss) = (List.length ss) = 0
+
+fun intern (bs, s::ss) name = let
+    val renamed = Id.f name
+    val s = Scope.register s name renamed
+    val i = Scope.getId s renamed
+in
+    ((bs, s::ss), i)
+end
+  | intern (bs, []) name = raise Fail "scope nil"
+
+fun add (b::bs, ss) code = ((Block.add b code)::bs, ss)
+  | add ([], ss) code = raise Fail "block nil"
+fun pushBlock (bs,ss) b = (b::bs, ss)
+end
+
+
 
 
 structure A = AST
@@ -283,7 +288,7 @@ exception Type
 
 
 fun doMonoOp gen mop x = let
-    val gen =  compile gen x
+    val gen = compile gen x
 in
     case mop of
         A.Not => C.add gen Not    
@@ -302,23 +307,37 @@ end
 
 and doBind gen (A.Var name) value = let
 (* :TODO: interreferencial defiinition *)
-    val (gen, id) = C.intern name
+    val (gen, id) = C.intern gen name
     val gen = compile gen value
 in
-    if C.isGlobalScope
-    then C.add gen (Gset(id))
-    else C.add gen (Gset(id))
+    if C.isGlobalScope gen
+    then C.add gen (Gset id)
+    else C.add gen (Lset id)
 end
   | doBind _ _ _ = raise Type
 
 
-and doVar (gen as {scopes = scope::scopes, ...}) name = let
-    val renamed = Scope.find scope name
-    val id = Scope.findId scope renamed
+and doVar gen name = let
+    val (gen, id) = C.intern gen name
 in
+    if C.isGlobalScope gen
+    then C.add gen (Gref id)
+    else C.add gen (Lref id)
 end
 
-and doIf gen cnd thn els = gen
+and doIf gen cnd thn els = let
+    val thenLabel = (Id.f "then")
+    val elseLabel = (Id.f "else")
+    val gen = compile gen cnd
+    val gen = C.add gen (Jtrue thenLabel)
+    val gen = C.add gen (Jump elseLabel)
+    val gen = C.pushBlock gen (Block.new thenLabel)
+    val gen = compile gen thn
+    val gen = C.pushBlock gen (Block.new elseLabel)
+    val gen = compile gen els
+in
+    gen
+end
 
 and doConst gen x = C.add gen (Push x)
 
@@ -326,25 +345,18 @@ and doLambda gen params body = gen
 
 and doCall gen lambda args = gen
 
-and doProgn gen (exp::exps) = let
-    val gen = compile (C.nonTailPos gen) exp
-in
-    doProgn gen exps
-end
-  | doProgn gen [exp] = compile (C.tailPos gen) exp
-  | doProgn gen [] = raise Fail "progn invalid"
-    
+and doProgn gen (exp::exps) = gen
 
 and compile gen ast =
   case ast of
-      MonoOp(monoop, x) => doMonoOp gen monoop x
-    | BinOp(binop, x, y) => doBinOp gen binop x y
-    | Bind(var, value) => doBind gen var value
-    | If(cnd, thn, els) => doIf gen cnd thn els
-    | Var(name) => doVar gen name
-    | Lambda(params, body) => doLambda gen params body
-    | Call(lambda, args) => doCall gen lambda args
-    | Progn(exps) => doProgn gen exps
+      A.MonoOp(monoop, x) => doMonoOp gen monoop x
+    | A.BinOp(binop, x, y) => doBinOp gen binop x y
+    | A.Bind(var, value) => doBind gen var value
+    | A.If(cnd, thn, els) => doIf gen cnd thn els
+    | A.Var(name) => doVar gen name
+    | A.Lambda(params, body) => doLambda gen params body
+    | A.Call(lambda, args) => doCall gen lambda args
+    | A.Progn(exps) => doProgn gen exps
     | x => doConst gen x
       
 
