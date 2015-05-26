@@ -23,7 +23,7 @@ datatype t
   | Bind of t * t
   | If of t * t * t
   | Var of string
-  | Function of t list * t
+  | Lambda of t list * t
   | Call of t * t list
   | Progn of t list                  
 
@@ -36,7 +36,7 @@ fun toString (Int x) = Int.toString x
                                 " " ^ (toString thn) ^
                                 " " ^ (toString els) ^ ")"
   | toString (Var name) =  name
-  | toString (Function(params, body)) = "(lambda (" ^ (String.concatWith " " (List.map toString params))
+  | toString (Lambda(params, body)) = "(lambda (" ^ (String.concatWith " " (List.map toString params))
                                         ^ ") " ^ (toString body) ^ ")"
   | toString (Progn(exps)) = "(progn " ^ (String.concatWith " " (List.map toString exps)) ^ ")"
 
@@ -137,10 +137,10 @@ and doVar inter name =
 
 and doBind inter (A.Var name) value = (Env.add inter name value, A.Bool true)
   | doBind _ _ _ = raise Argument
-and doFunction inter params body = (inter, A.Function(params, body))
-and doCall inter function args  = let
-    val (inter, function) = f inter function
-    val (A.Function(params, body)) = function
+and doLambda inter params body = (inter, A.Lambda(params, body))
+and doCall inter lambda args  = let
+    val (inter, lambda) = f inter lambda
+    val (A.Lambda(params, body)) = lambda
     fun bindArgs _ [] [] scope = scope
       | bindArgs inter ((A.Var name)::params) (arg::args) scope = let
           val (inter , arg) = f inter arg
@@ -163,8 +163,8 @@ and f inter ast =
       | A.Bind(var, value) => doBind inter var value
       | A.If(cnd, thn, els) => doIf inter cnd thn els
       | A.Var(name) => doVar inter name
-      | A.Function(params, body) => doFunction inter params body
-      | A.Call(function, args) => doCall inter function args
+      | A.Lambda(params, body) => doLambda inter params body
+      | A.Call(lambda, args) => doCall inter lambda args
       | A.Progn(progs) => doProgn inter progs
       | x => (inter, x)
 
@@ -177,43 +177,155 @@ end
 end
 
 
-structure VM =
-struct
+structure VM = struct
+
+structure Scope = struct
+val empty = []
+
+val alpha = let
+    val id = ref 0
+in
+    fn name => name ^ "@" ^ (Int.toString (! id)) before id <- (!id) + 1
+end
+
+fun register scope name renamed = (name, renamed) :: scope
+fun add scope name = register scope name (alpha name)
+
+fun find [] key = NONE
+  | find ((name:string, renamed)::scope) (key:string) =
+    if name = key
+    then SOME renamed
+    else find scope key
+
+fun findId scope (key:string) = let
+    fun aux ((_, renamed:string)::scope) i =
+      if key = renamed
+      then i
+      else aux scope (i + 1)
+      | aux [] _ = raise Fail "cannot find ID"
+in
+    aux (List.rev scope) 0
+    
+end
+end
+
+
+structure CodeGen = struct
+type t = opcode list
+val empty = {codes = [], scopes = [], tailPos = true}
+fun setCodes {codes, scopes, tailPos} newCodes = {
+    codes = newCodes,
+    scopes = scopes,
+    tailPos = tailPos
+}
+
+fun setScopes {codes, scopeDepth, tailPos} newScopes = {
+    codes = codes,
+    scopes = newScopes,
+    tailPos = tailPos
+}
+
+fun setTailPos {codes, scopes, tailPos} newTailPos = {
+    codes = codes,
+    scopes = scopes,
+    tailPos = newTailPos
+}
+
+fun add (gen as {codes, ...}) code = setCodes gen code::codes
+fun tailPos gen = setTailPos gen true
+fun nonTailPos gen = setTailPos gen false
+fun pushScope (gen as {scopes, ...}) =  setScopeDepth gen ([] ::scope )
+fun popScope (gen as {scopes = scope:: scopes, ...}) =  setScopes gen scopes
+fun isGlobalScope {scopes, ...} = (List.len scopes) = 0
+
+fun intern (gen as {scopes = scope::scopes, ...}) name = let
+    val renamed = Scope.alpha name
+    val scope = Scope.register scope name renamed
+    val i = Scope.findId scope renamed
+in
+    ((setScopes gen (scope::scopes)), i)
+end
+
+fun generate {codegen, ...} = List.rev codegen
+end
+
 datatype opcode
-  = Add
+  = Not
+  | Add
   | Eq
   | Gt
   | Jump
   | Jtrue
-  | Push
+  | Call
+  | Ret
+  | Push of t
   | Lref of int
-  | Gref of string
-
-structure CodeGen =
-struct
-val initSize = 8
-type t = opcode array * int
-
-end
+  | Lset of int * t
+  | Gref of int
+  | Gset of int * t
+  | Nop
 
 
-fun doMonoOp env mop x = let
-    val env = compile env x
+structure A = AST
+structure C = CodeGen
+
+exception Type
+
+
+fun doMonoOp gen mop x = let
+    val gen =  compile gen x
 in
-    
+    case mop of
+        A.Not => C.add gen Not    
 end
 
-and compile env ast =
+and doBinOp gen bop x y = let
+    val gen = compile gen x
+    val gen = compile gen y
+in
+    case bop of
+        A.Equal => C.add gen Eq
+      | A.GreaterThan => C.add gen Gt
+      | A.Add => C.add gen Add
+        
+end
+
+and doBind gen (A.Var name) value = let
+(* :TODO: interreferencial defiinition *)
+    val (gen, id) = C.intern name
+in
+end
+  | doBind _ _ _ = raise Type
+and doVar gen name = gen
+
+and doIf gen cnd thn els = gen
+
+and doConst gen x = C.add gen (Push x)
+
+and doLambda gen params body = gen
+
+and doCall gen lambda args = gen
+
+and doProgn gen (exp::exps) = let
+    val gen = compile gen exp
+in
+    doProgn gen exps
+end
+  | doProgn gen [exps] = 
+  | doProgn gen [] = raise Fail "progn invalid"
+    
+
+and compile gen ast =
   case ast of
-      MonoOp(monoop, x) => doMonoOp env monoop x
-    | BinOp(binop, x, y) =>
-    | Bind(var, value) =>
-    | If(cnd, thn, els) =>
-    | Var(name) =>
-    | Function(params, body) =>
-    | Call(function, args) =>
-    | Progn(exps) =>
-    | x => Push x
+      MonoOp(monoop, x) => doMonoOp gen monoop x
+    | BinOp(binop, x, y) => doBinOp gen binop x y
+    | Bind(var, value) => doBind gen var value
+    | If(cnd, thn, els) => doIf gen cnd thn els
+    | Var(name) => doVar gen name
+    | Lambda(params, body) => doLambda gen params body
+    | Call(lambda, args) => doCall gen lambda args
+    | Progn(exps) => doProgn gen exps
+    | x => doConst gen x
       
 
 end
@@ -221,7 +333,7 @@ open AST
 
 val fib = (Progn [
                 Bind (Var "fib",
-                      Function([Var "n"],
+                      Lambda([Var "n"],
                                (If (BinOp(GreaterThan,
                                           (Int 2),
                                           (Var "n")),
