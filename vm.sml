@@ -203,6 +203,7 @@ structure Scope :
               val add: t -> string -> t
               val find: t -> string -> string option
               val getId: t -> string -> int
+              val findWithId: t -> string -> (string * int) option
           end
 = struct
 type t = (string * string) list
@@ -227,6 +228,15 @@ in
     aux (List.rev scope) 0
     
 end
+
+fun findWithId scope key = let
+    val renamed = find scope key
+    val id = Option.map (getId scope) renamed
+    fun conj (SOME x) (SOME y) = SOME (x, y)
+      | conj _ _ = NONE
+in
+    conj renamed id
+end
 end
 
 datatype opcode
@@ -239,6 +249,7 @@ datatype opcode
   | Call
   | Ret
   | Push of AST.t
+  | Pop
   | Lref of int
   | Lset of int
   | Gref of int
@@ -273,12 +284,12 @@ in
 end
   | intern (bs, []) name = raise Fail "scope nil"
 
-fun findLocal (bs, []) _ = raise Fail "scope nil" 
-  | findLocal (bs, s::ss) key = Scope.find s key
+fun findLocalWithId (bs, []) _ = raise Fail "scope nil" 
+  | findLocalWithId (bs, s::ss) key = Scope.findWithId s key
 
-fun findGlobal (bs, ss) key = let
+fun findGlobalWithId (bs, ss) key = let
     fun aux [] = raise Fail "scope nil"
-      | aux [s] = Scope.find s key
+      | aux [s] = Scope.findWithId s key
       | aux (s::ss) = aux ss
 in
     aux ss
@@ -328,35 +339,60 @@ end
   | doBind _ _ _ = raise Type
 
 
-and doVar gen name = l
-    case C.findLocal gen name of
-        SOME =>
-      | NONE => case C.findGlobal gen name of
-                    SOME =>
+and doVar gen name =
+    case C.findLocalWithId gen name of
+        SOME(_, id) => C.add gen (Lref id)
+      | NONE => case C.findGlobalWithId gen name of
+                    SOME(_, id) => C.add gen (Gref id)
                   (* :TODO: interreferencial defiinition *)
                   | NONE => raise Fail "Unknown var"
 
 and doIf gen cnd thn els = let
     val thenLabel = (Id.f "then")
     val elseLabel = (Id.f "else")
+    val endLabel = (Id.f "end")
     val gen = compile gen cnd
     val gen = C.add gen (Jtrue thenLabel)
     val gen = C.add gen (Jump elseLabel)
     val gen = C.pushBlock gen (Block.new thenLabel)
     val gen = compile gen thn
+    val gen = C.add gen (Jump endLabel)
     val gen = C.pushBlock gen (Block.new elseLabel)
     val gen = compile gen els
+    val gen = C.add gen (Jump endLabel)
+    val gen = C.pushBlock gen (Block.new endLabel)
 in
     gen
 end
 
 and doConst gen x = C.add gen (Push x)
 
-and doLambda gen params body = gen
+and doLambda gen params body = let
+    val gen = C.pushScope gen Scope.empty
+    val gen = List.foldl (fn (A.Var(p), gen) => let val (gen, id) = C.intern gen p
+                                            in gen end)
+                         gen params
+    val gen = compile gen body
+    (* :TODO: local variable handling *)
+    val gen = C.popScope gen
+in
+    gen
+end
 
-and doCall gen lambda args = gen
+and doCall gen lambda args = let
+    val gen = List.foldl (fn (ast, gen) => compile gen ast) gen args
+in
+    gen
+end
 
-and doProgn gen (exp::exps) = gen
+and doProgn gen [exp] = compile gen exp
+  | doProgn gen (exp::exps) = let
+    val gen = compile gen exp
+    val gen = C.add gen Pop
+in
+    doProgn gen exps
+end
+  | doProgn gen [] = raise Fail "progn invalid"
 
 and compile gen ast =
   case ast of
@@ -370,6 +406,8 @@ and compile gen ast =
     | A.Progn(exps) => doProgn gen exps
     | x => doConst gen x
       
+
+fun c ast = compile (CodeGen.new ()) ast
 
 end
 open AST
@@ -391,3 +429,4 @@ val fib = (Progn [
                 Call(Var "fib", [Int 1])])
 
 (* val () = Interp.run  fib *)
+val _ = VM.c fib
