@@ -53,7 +53,7 @@ datatype opcode
   | Jtrue of string
   | Call
   | Ret
-  | Push of AST.t
+  | Push of vmvalue
   | Pop
   | Lref of int
   | Lset of int
@@ -61,18 +61,56 @@ datatype opcode
   | Gset of int
   | Nop
 
-datatype vmvalue
+and vmvalue
   = Int of int
   | Bool of bool
   | Lambda of opcode list
 
-structure Block =
+
+fun dumpCode Not = "Not"
+  | dumpCode Add = "Add"
+  | dumpCode Eq =  "Eq"
+  | dumpCode Gt = "Gt"
+  | dumpCode (Jump x) = "Jump " ^ x
+  | dumpCode (Jtrue x) = "Jtrue " ^ x
+  | dumpCode Call = "Call" 
+  | dumpCode Ret = "Ret"
+  | dumpCode (Push v) = "Push " ^ (dumpValue v)
+  | dumpCode Pop = "Pop"
+  | dumpCode (Lref i) = "Lref " ^ (Int.toString i)
+  | dumpCode (Lset i) = "Lset " ^ (Int.toString i)
+  | dumpCode (Gref i) = "Gref " ^ (Int.toString i)
+  | dumpCode (Gset i) = "Gset " ^ (Int.toString i)
+  | dumpCode Nop = "Nop"
+and dumpValue (Int i) = Int.toString i
+  | dumpValue (Bool b) = Bool.toString b
+  | dumpValue (Lambda ops) = ""
+
+structure BaseBlock =
 struct
 
-type t = opcode list * string
+type t = string * opcode list
 
-fun new label = ([], label)
-fun add (ops, label) opcode = (opcode::ops, label)
+fun new label = (label, [])
+fun add (label, ops) opcode = (label, opcode::ops)
+fun gen (label, ops) = (label, List.rev ops)
+fun dump (label, ops) = let
+    val ops = String.concatWith "\n" (List.map (fn x => "  " ^ (dumpCode x)) ops)
+in
+    label ^ ":\n" ^ ops
+end
+end
+
+structure Block =
+struct
+type t = BaseBlock.t list
+fun new label = [BaseBlock.new label]
+fun add bs b = b::bs
+fun addCode (bb::bbs) b = (BaseBlock.add bb b)::bbs
+  | addCode [] b = raise Fail "BaseBlock nil"
+fun gen t = List.rev (List.map BaseBlock.gen t)
+
+fun dump bs = String.concatWith "\n" (List.map BaseBlock.dump bs)
 end
 
 
@@ -83,6 +121,9 @@ fun new () = ([Block.new (Id.f "main")], [Scope.empty])
 fun pushBlock (bs, ss) b = (b::bs, ss)
 fun popBlock(b::bs, ss) = (bs, ss)
   | popBlock ([], ss) = raise Fail "block nil"
+
+fun pushBaseBlock (b::bs, ss) bb = ((Block.add b bb)::bs, ss)
+  | pushBaseBlock ([], _) _ = raise Fail "block nil"
 
 
 fun pushScope (bs, ss) s =  (bs, s::ss)
@@ -110,9 +151,12 @@ in
     aux ss
 end
 
-fun add (b::bs, ss) code = ((Block.add b code)::bs, ss)
+fun add (b::bs, ss) code = ((Block.addCode b code)::bs, ss)
   | add ([], ss) code = raise Fail "block nil"
-fun pushBlock (bs,ss) b = (b::bs, ss)
+
+fun gen (bs, ss) = List.rev (List.map Block.gen bs)
+
+fun dump bs = String.concat (List.map Block.dump bs)
 end
 
 
@@ -169,13 +213,13 @@ and doIf gen cnd thn els = let
     val gen = compile gen cnd
     val gen = C.add gen (Jtrue thenLabel)
     val gen = C.add gen (Jump elseLabel)
-    val gen = C.pushBlock gen (Block.new thenLabel)
+    val gen = C.pushBaseBlock gen (BaseBlock.new thenLabel)
     val gen = compile gen thn
     val gen = C.add gen (Jump endLabel)
-    val gen = C.pushBlock gen (Block.new elseLabel)
+    val gen = C.pushBaseBlock gen (BaseBlock.new elseLabel)
     val gen = compile gen els
     val gen = C.add gen (Jump endLabel)
-    val gen = C.pushBlock gen (Block.new endLabel)
+    val gen = C.pushBaseBlock gen (BaseBlock.new endLabel)
 in
     gen
 end
@@ -184,7 +228,7 @@ and doConst gen x = C.add gen (Push x)
 
 and doLambda gen params body = let
     val gen = C.pushScope gen Scope.empty
-    val f   = (Block.new ())
+    val f   = (Block.new (Id.f "lambda"))
     val gen = C.pushBlock gen f
     val gen = List.foldl (fn (A.Var(p), gen) => let val (gen, id) = C.intern gen p
                                             in gen end)
@@ -199,6 +243,8 @@ end
 
 and doCall gen lambda args = let
     val gen = List.foldl (fn (ast, gen) => compile gen ast) gen args
+    val gen = compile gen lambda
+    val gen = C.add gen Call
 in
     gen
 end
@@ -222,10 +268,11 @@ and compile gen ast =
     | A.Lambda(params, body) => doLambda gen params body
     | A.Call(lambda, args) => doCall gen lambda args
     | A.Progn(exps) => doProgn gen exps
-    | x => doConst gen x
+    | A.Int x => doConst gen (Int x)
+    | A.Bool x => doConst gen (Bool x)
       
 
-fun c ast = compile (CodeGen.new ()) ast
+fun c ast = print(C.dump (C.gen (compile (CodeGen.new ()) ast)))
 
 end
 val _ = VM.c AST.fib
