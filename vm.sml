@@ -129,7 +129,7 @@ fun pushBaseBlock (b::bs, ss) bb = ((Block.add b bb)::bs, ss)
 fun pushScope (bs, ss) s =  (bs, s::ss)
 fun popScope (bs, s::ss) =  (bs, ss)
   | popScope (bs, []) = raise Fail "scope nil"
-fun isGlobalScope (bs, ss) = (List.length ss) = 0
+fun isGlobalScope (bs, ss) = (List.length ss) = 1
 
 fun intern (bs, s::ss) name = let
     val renamed = Id.f name
@@ -190,16 +190,23 @@ and doBind gen (A.Var name) value = let
 (* :TODO: interreferencial defiinition *)
     val (gen, id) = C.intern gen name
     val gen = compile gen value
+    val gen =     if C.isGlobalScope gen
+                  then C.add gen (Gset id)
+                  else C.add gen (Lset id)
+    val gen = C.add gen (Push (Bool true))
 in
-    if C.isGlobalScope gen
-    then C.add gen (Gset id)
-    else C.add gen (Lset id)
+    gen
 end
   | doBind _ _ _ = raise Type
 
 
 and doVar gen name =
-    case C.findLocalWithId gen name of
+    if C.isGlobalScope gen
+    then case C.findGlobalWithId gen name of
+                    SOME(_, id) => C.add gen (Gref id)
+                  (* :TODO: interreferencial defiinition *)
+                  | NONE => raise Fail "Unknown var"
+    else case C.findLocalWithId gen name of
         SOME(_, id) => C.add gen (Lref id)
       | NONE => case C.findGlobalWithId gen name of
                     SOME(_, id) => C.add gen (Gref id)
