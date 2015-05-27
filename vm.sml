@@ -273,6 +273,17 @@ in
 end
   | intern (bs, []) name = raise Fail "scope nil"
 
+fun findLocal (bs, []) _ = raise Fail "scope nil" 
+  | findLocal (bs, s::ss) key = Scope.find s key
+
+fun findGlobal (bs, ss) key = let
+    fun aux [] = raise Fail "scope nil"
+      | aux [s] = Scope.find s key
+      | aux (s::ss) = aux ss
+in
+    aux ss
+end
+
 fun add (b::bs, ss) code = ((Block.add b code)::bs, ss)
   | add ([], ss) code = raise Fail "block nil"
 fun pushBlock (bs,ss) b = (b::bs, ss)
@@ -317,13 +328,13 @@ end
   | doBind _ _ _ = raise Type
 
 
-and doVar gen name = let
-    val (gen, id) = C.intern gen name
-in
-    if C.isGlobalScope gen
-    then C.add gen (Gref id)
-    else C.add gen (Lref id)
-end
+and doVar gen name = l
+    case C.findLocal gen name of
+        SOME =>
+      | NONE => case C.findGlobal gen name of
+                    SOME =>
+                  (* :TODO: interreferencial defiinition *)
+                  | NONE => raise Fail "Unknown var"
 
 and doIf gen cnd thn els = let
     val thenLabel = (Id.f "then")
