@@ -392,6 +392,35 @@ type vm = {
     labelDb: (string * int) list
 }
 
+fun printStack ({stack, sp, fp, ...}: vm) = 
+  Array.appi (fn (i, value) => (
+                  print (Int.toString i);
+                  print "\t";
+                  print (dumpValue value); 
+                  (if i = (!sp)
+                   then print " <-sp"
+                   else ());
+                  (if i = (!fp)
+                   then print " <-fp"
+                   else ());
+                  print "\n")) stack
+
+fun printOps pc (buffer, labelDb, bufLen) = (
+    Array.appi (fn (i, opcode) => (
+                    print (Int.toString i);
+                    print "\t";
+                    print (dumpCode opcode);
+                    (if i = pc
+                     then print " <-pc"
+                     else ());
+                    print "\n")) buffer
+)
+
+fun printVM (vm as {pc, ...}: vm) ops = (
+    printStack vm;
+    printOps (!pc) ops
+)
+
 exception Type
 exception Exit
 
@@ -427,8 +456,11 @@ fun addLabels ({stack, fp, sp, pc, pool, ci, labelDb}: vm) db = {
 }
   
 
-fun pushCi (vm as {ci, fp, sp, pc, ...}: vm) = 
-  ci := {fp = !fp, sp = !sp, pc = !pc} :: (!ci)
+fun pushCi (vm as {ci, fp, sp, pc, ...}: vm) = (
+    ci := {fp = !fp, sp = !sp, pc = !pc} :: (!ci);
+    fp := (!sp) - 1
+) 
+  
 
 fun popCi (vm as  {ci, fp, sp, pc, ...}: vm) = let
     val ({fp = cfp, sp = csp, pc = cpc}::tl) = !ci
@@ -444,7 +476,7 @@ fun findLabel [] key = raise Fail "ICE"
     then index
     else findLabel db key
 
-fun doOp (vm as {pool, stack, sp, pc, labelDb, ... } : vm) opcode =
+fun doOp (vm as {pool, stack, fp, sp, pc, labelDb, ...} : vm) opcode =
   case opcode of
       Not => (case pop vm of
                  Bool x => push vm (Bool (not x))
@@ -465,15 +497,18 @@ fun doOp (vm as {pool, stack, sp, pc, labelDb, ... } : vm) opcode =
                        | Bool false => ()
                        | _ => raise Type)
     | Call => (case (pop vm) of
-                  Lambda label => pushCi vm before pc := ((findLabel labelDb label) - 1)
+                  Lambda label => (
+                   pushCi vm;
+                   pc := ((findLabel labelDb label) - 1))
                | _ => raise Type)
-    | Ret => popCi vm
+    | Ret => (popCi vm; pc := (!pc))
     | Push v => push vm v
     | Pop => (pop vm;())
-    | Lref i => push vm (Array.sub(stack, (!sp) - i))
-    | Lset i =>  (Array.update(stack, (!sp) - i, pop vm)) before push vm (Bool true)
+    | Lref i => push vm (Array.sub(stack, (!fp) - i))
+    | Lset i =>  ((Array.update(stack, (!sp) - i, pop vm));
+                    push vm (Bool true))
     | Gref i => push vm (Array.sub(pool, i))
-    | Gset i =>  Array.update(pool, i, pop vm) before push vm (Bool true)
+    | Gset i =>  (Array.update(pool, i, pop vm); push vm (Bool true))
     | Nop => ()
     | End => raise Exit
                 
@@ -482,27 +517,30 @@ fun run (vm as {pc, stack, ...} : vm) (obj as (ops, labelDb, opLen)) = let
     val vm = addLabels vm labelDb
     val len = Array.length ops
     fun aux () = if (!pc) < len
-                 then (doOp vm (Array.sub(ops, !pc));
-                       pc := (!pc) + 1;
-                       aux ())
+                 then (
+                     printVM vm obj;
+                     TextIO.inputLine TextIO.stdIn;
+                     doOp vm (Array.sub(ops, !pc));
+                     pc := (!pc) + 1;
+                     aux ())
                       handle Exit => ()
-                      handle _ => print (Compile.C.dump obj)
                  else ()
 in
-    aux ();
+    aux ()
+    handle _ => printVM vm obj;
     stack
 end
                                          
 end
 open VM
 
-val _ = run (new ())
-            (Array.fromList[
-                  Push (Lambda "label"),
-                  Gset 0,
-                  Push (Int 1),
-                  Push (Int 2),
-                  Add
-            ], [("label", 1)], 0)
+(* val _ = run (new ()) *)
+(*             (Array.fromList[ *)
+(*                   Push (Lambda "label"), *)
+(*                   Gset 0, *)
+(*                   Push (Int 1), *)
+(*                   Push (Int 2), *)
+(*                   Add *)
+(*             ], [("label", 1)], 0) *)
 
 
