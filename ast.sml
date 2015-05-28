@@ -57,5 +57,11 @@ val fib = (Progn [
                                                                  Int ~2)])))))),
                 Call(Var "fib", [Int 1])])
 
+val add3 = (Progn [
+                 Bind (Var "add3",
+                       Lambda([],
+                              BinOp(Add, Int 1, Int 2)
+                      )),
+                 Call(Var "add3", [])])
 end
 
