@@ -123,7 +123,7 @@ fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) cops = let
                next ()),
             (* Nop *)
             (fn _ =>
-                next()),
+                next ()),
             (fn _ =>
                 raise Exit)
         ])
