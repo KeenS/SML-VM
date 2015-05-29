@@ -1,0 +1,30 @@
+_require "basis.smi"
+
+structure AST =
+struct
+datatype monoop
+  = Not
+
+
+datatype binop
+  = Equal
+  | GreaterThan
+  | Add
+
+
+datatype t
+  = Int of int
+  | Bool of bool
+  | MonoOp of monoop * t
+  | BinOp of binop * t * t
+  | Bind of t * t
+  | If of t * t * t
+  | Var of string
+  | Lambda of t list * t
+  | Call of t * t list
+  | Progn of t list                  
+
+val toString: t -> string
+val fib: n -> t
+val add3: t
+end

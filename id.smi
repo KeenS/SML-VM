@@ -1,0 +1,5 @@
+_require "basis.smi"
+structure Id =
+struct
+val f: string -> string
+end

@@ -1,0 +1,10 @@
+_require "basis.smi"
+_require "ast.smi"
+_require "vmvalue.smi"
+_require "opcode.smi"
+_require "id.smi"
+
+structure Compile =
+struct
+val f -> AST.t -> OpCode.t array
+end

@@ -1,0 +1,7 @@
+_require "basis.smi"
+_require "ast.smi"
+
+structure Interp =
+struct
+val run: AST.t -> unit
+end

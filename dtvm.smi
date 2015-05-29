@@ -2,12 +2,13 @@ _require "basis.smi"
 _require "ast.smi"
 _require "vmvalue.smi"
 _require "opcode.smi"
+_require "vm.smi"
 
-structure VM =
+structure DTVM =
 struct
 type t (= boxd)
-type opcode (=boxed)
 val new: unit -> vm
-val compile: AST.t -> opcode array
-val run: t -> opcode array -> unit
+val compile: AST.t -> OpCode.t array
+val run: t -> OpCode.t array -> unit
 end
+
