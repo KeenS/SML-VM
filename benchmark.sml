@@ -31,7 +31,7 @@ in
 end
                             
 fun histLine width base value =
-  (nChars (Int.fromLarge(width * value div base)) #"*") ^ "\n"
+  (nChars (Int.fromLarge(width * value div base)) #"*") ^ " " ^ (LargeInt.toString value) ^ "\n"
                                                             
 fun benchset name n fs = let
     val res = List.map (fn (label, f) => (label, bench n f)) fs
@@ -40,7 +40,8 @@ fun benchset name n fs = let
 in
     print "name:\n";
     print ((nChars ((String.size " ") + maxLen) #"-") ^ "+" ^ (nChars ((String.size "|") +  50) #"-") ^ "\n");
-    app (fn (label, time) => print(" " ^ (toWidth maxLen label) ^ "|" ^(histLine (50:LargeInt.int) max time))) res;
+    app (fn (label, time) => print(" " ^ (toWidth maxLen label) ^ "|"
+                                 ^ (histLine (50:LargeInt.int) max time))) res;
     print ((nChars ((String.size " ") + maxLen) #"-") ^ "+" ^ (nChars ((String.size "|") +  50) #"-") ^ "\n")
 end
                              
