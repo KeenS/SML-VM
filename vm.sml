@@ -379,7 +379,7 @@ end
 (* Compile *)
 
 
-val STACK_SIZE = 16
+val STACK_SIZE = 500
 val CONST_POOL_SIZE = 10
 
 type ci = {
@@ -394,8 +394,7 @@ type vm = {
     fp: int ref,
     pc: int ref,
     pool: vmvalue array,
-    ci: ci list ref,
-    labelDb: (string * int) list
+    ci: ci list ref
 }
 
 fun printStack ({stack, sp, fp, ...}: vm) = 
@@ -436,8 +435,7 @@ fun new () = {
     sp = ref 0,
     pc = ref 0,
     pool = Array.array(CONST_POOL_SIZE, Undefined),
-    ci = ref [],
-    labelDb = []
+    ci = ref []
 }
 
 fun push ({stack, sp, ...}: vm) v = (
@@ -450,16 +448,6 @@ fun pop ({stack, sp, ...}: vm) = (
     sp := (!sp) - 1;
     Array.sub(stack, !sp)
 )
-
-fun addLabels ({stack, fp, sp, pc, pool, ci, labelDb}: vm) db = {
-    stack = stack,
-    fp = fp,
-    sp = sp,
-    pc = pc,
-    pool = pool,
-    ci = ci,
-    labelDb = db @ labelDb
-}
   
 
 fun pushCi (vm as {ci, fp, sp, pc, ...}: vm) = (
@@ -482,57 +470,54 @@ fun findLabel [] key = raise Fail "ICE"
     if key = label
     then index
     else findLabel db key
-
-fun doOp (vm as {pool, stack, fp, sp, pc, labelDb, ...} : vm) opcode =
-  case opcode of
-      Not => (case pop vm of
-                 Bool x => push vm (Bool (not x))
-               | _ => raise Type)
-    | Add => (case (pop vm, pop vm) of
-                 (Int x, Int y) => push vm (Int (x + y))
-               | _ => raise Type)
-    | Eq => (case (pop vm, pop vm) of
-                (Int x, Int y) => push vm (Bool (x = y))
-              | (Bool x, Bool y) => push vm (Bool (x = y))
-              | _ => raise Type)
-    | Gt => (case (pop vm, pop vm) of
-                (Int x, Int y) => push vm (Bool (x < y))
-              | _ => raise Type)
-    | Jump label => pc := ((findLabel labelDb label) - 1)
-    | Jtrue label => (case pop vm of
-                         Bool true => pc := ((findLabel labelDb label) - 1)
-                       | Bool false => ()
-                       | _ => raise Type)
-    | Call i => (case (pop vm) of
-                    Lambda label => (
-                     pushCi vm;
-                     fp := (!fp) - i;
-                     pc := ((findLabel labelDb label) - 1))
-                  | _ => raise Type)
-    | Ret => (Array.update(stack, !fp, Array.sub(stack, (!sp) - 1));
-             popCi vm;
-             pc := (!pc))
-    | Push v => push vm v
-    | Pop => (pop vm;())
-    | Lref i => push vm (Array.sub(stack, (!fp) + i))
-    | Lset i =>  ((Array.update(stack, (!fp) + i, pop vm));
-                    push vm (Bool true))
-    | Gref i => push vm (Array.sub(pool, i))
-    | Gset i =>  (Array.update(pool, i, pop vm); push vm (Bool true))
-    | Nop => ()
-    | End => raise Exit
                 
 
-fun run (vm as {pc, stack, ...} : vm) (obj as (ops, labelDb, opLen)) = let
-    val vm = addLabels vm labelDb
+fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) (obj as (ops, labelDb, opLen)) = let
     val len = Array.length ops
     fun aux () = if (!pc) < len
                  then (
-                     printVM vm obj;
-                     TextIO.inputLine TextIO.stdIn;
-                     doOp vm (Array.sub(ops, !pc));
+                     (* printVM vm obj; *)
+                     (* TextIO.inputLine TextIO.stdIn; *)
+                     case  (Array.sub(ops, !pc)) of
+                         Not => (case pop vm of
+                                    Bool x => push vm (Bool (not x))
+                                  | _ => raise Type)
+                       | Add => (case (pop vm, pop vm) of
+                                    (Int x, Int y) => push vm (Int (x + y))
+                                  | _ => raise Type)
+                       | Eq => (case (pop vm, pop vm) of
+                                   (Int x, Int y) => push vm (Bool (x = y))
+                                 | (Bool x, Bool y) => push vm (Bool (x = y))
+                                 | _ => raise Type)
+                       | Gt => (case (pop vm, pop vm) of
+                                   (Int x, Int y) => push vm (Bool (x < y))
+                                 | _ => raise Type)
+                       | Jump label => pc := ((findLabel labelDb label) - 1)
+                       | Jtrue label => (case pop vm of
+                                            Bool true => pc := ((findLabel labelDb label) - 1)
+                                          | Bool false => ()
+                                          | _ => raise Type)
+                       | Call i => (case (pop vm) of
+                                       Lambda label => (
+                                        pushCi vm;
+                                        fp := (!fp) - i;
+                                        pc := ((findLabel labelDb label) - 1))
+                                     | _ => raise Type)
+                       | Ret => (Array.update(stack, !fp, Array.sub(stack, (!sp) - 1));
+                                popCi vm;
+                                pc := (!pc))
+                       | Push v => push vm v
+                       | Pop => (pop vm;())
+                       | Lref i => push vm (Array.sub(stack, (!fp) + i))
+                       | Lset i =>  ((Array.update(stack, (!fp) + i, pop vm));
+                                    push vm (Bool true))
+                       | Gref i => push vm (Array.sub(pool, i))
+                       | Gset i =>  (Array.update(pool, i, pop vm); push vm (Bool true))
+                       | Nop => ()
+                       | End => raise Exit
+                   ;
                      pc := (!pc) + 1;
-                     aux ())
+                   aux ())
                       handle Exit => ()
                  else ()
 in
