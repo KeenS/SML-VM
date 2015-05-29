@@ -91,6 +91,8 @@ in
     ci := tl
 end
 
+val compile = Compile.f
+
 fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) ops = let
     fun aux () = (
         case  (Array.sub(ops, !pc)) of
@@ -133,10 +135,9 @@ fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) ops = let
       ;
         pc := (!pc) + 1;
       aux ())
-                 handle Exit => () 
 in
     aux ()
-    handle _ => printVM vm ops;
+    handle Exit => ();
     stack
 end
                                                             
