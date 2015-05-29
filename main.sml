@@ -14,10 +14,10 @@ val dtcompiled = DTVM.compile target
 val vm = VM.new ()
 val dtvm = DTVM.new ()
 
-val _ = Benchmark.benchset "fib" 1 [
-        ("interpreter",
+val _ = Benchmark.benchset "fib 35" 1 [
+        ("Interpreter",
          fn () => (Interp.run target; ())),
-        ("normal VM",
+        ("Normal VM",
          fn () => (VM.run vm compiled; ())),
         ("Direct Threaded VM",
          fn () => (DTVM.run dtvm dtcompiled; ()))
