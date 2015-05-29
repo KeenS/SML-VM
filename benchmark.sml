@@ -31,7 +31,7 @@ in
 end
                             
 fun histLine width base value =
-  (nChars (Int.fromLarge(width * value div base)) #"*") ^ " " ^ (LargeInt.toString value) ^ "\n"
+  (nChars (Int.fromLarge(width * value div base)) #"*") ^ " " ^ (LargeInt.toString value) ^ "ms\n"
                                                             
 fun benchset name n fs = let
     val res = List.map (fn (label, f) => (label, bench n f)) fs
