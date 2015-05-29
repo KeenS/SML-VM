@@ -14,7 +14,7 @@ type ci = {
     pc: int
 }
 
-type vm = {
+type t = {
     stack: V.t array,
     sp: int ref,
     fp: int ref,
@@ -23,7 +23,9 @@ type vm = {
     ci: ci list ref
 }
 
-fun printStack ({stack, sp, fp, ...}: vm) = 
+type opcode = O.t
+
+fun printStack ({stack, sp, fp, ...}: t) = 
   Array.appi (fn (i, value) => (
                   print (Int.toString i);
                   print "\t";
@@ -47,7 +49,7 @@ fun printOps pc buffer = (
                     print "\n")) buffer
 )
 
-fun printVM (vm as {pc, ...}: vm) ops = (
+fun printVM (vm as {pc, ...}: t) ops = (
     printStack vm;
     printOps (!pc) ops
 )
@@ -55,7 +57,7 @@ fun printVM (vm as {pc, ...}: vm) ops = (
 exception Type
 exception Exit
 
-fun new (): vm = {
+fun new (): t = {
     stack = Array.array(STACK_SIZE, V.Undefined),
     fp = ref 0,
     sp = ref 0,
@@ -64,25 +66,25 @@ fun new (): vm = {
     ci = ref []
 }
 
-fun push ({stack, sp, ...}: vm) v = (
+fun push ({stack, sp, ...}: t) v = (
     Array.update(stack, (!sp), v);
     sp := (!sp) + 1
 )
 
-fun pop ({stack, sp, ...}: vm) = (
+fun pop ({stack, sp, ...}: t) = (
     Array.update(stack, !sp, V.Undefined); (* for debug *)
     sp := (!sp) - 1;
     Array.sub(stack, !sp)
 )
                                    
 
-fun pushCi (vm as {ci, fp, sp, pc, ...}: vm) = (
+fun pushCi (vm as {ci, fp, sp, pc, ...}: t) = (
     ci := {fp = !fp, sp = !sp, pc = !pc} :: (!ci);
     fp := (!sp)
 ) 
                                                  
 
-fun popCi (vm as  {ci, fp, sp, pc, ...}: vm) = let
+fun popCi (vm as  {ci, fp, sp, pc, ...}: t) = let
     val ({fp = cfp, sp = csp, pc = cpc}::tl) = !ci
 in
     fp := cfp;
@@ -93,7 +95,7 @@ end
 
 val compile = Compile.f
 
-fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) ops = let
+fun run (vm as {pool, stack, fp, sp, pc, ...} : t) ops = let
     fun aux () = (
         case  (Array.sub(ops, !pc)) of
             O.Not => (case pop vm of
@@ -138,7 +140,7 @@ fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) ops = let
 in
     aux ()
     handle Exit => ();
-    stack
+    print (V.toString (Array.sub(stack, 0)))
 end
                                                             
 end

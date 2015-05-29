@@ -3,6 +3,7 @@ struct
 open VM
 
 type oparg = {int: int, vmvalue: V.t}
+type opcode = int * oparg
 val noArg: oparg= {int = 0, vmvalue = V.Undefined}
 fun intArg int: oparg = {int = int, vmvalue = V.Undefined}
 fun vmvalueArg vmvalue: oparg = {int = 0, vmvalue = vmvalue}
@@ -36,7 +37,7 @@ in
 end
 
 
-fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) cops = let
+fun run (vm as {pool, stack, fp, sp, pc, ...} : t) cops = let
     val opArray = Array.array(opcodeSize, fn _ => ())
     fun next () = let
         val () = pc := (!pc) + 1;
@@ -133,7 +134,7 @@ fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) cops = let
 in
     aux ()
     handle Exit => ();
-    stack
+    print (V.toString (Array.sub(stack, 0)))
 end
                                          
 end
