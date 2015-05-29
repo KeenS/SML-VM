@@ -41,7 +41,7 @@ fun toString (Int x) = Int.toString x
   | toString (Call(lambda, args)) = "(" ^ (toString lambda) ^ " " ^ (String.concatWith " " (List.map toString args)) ^ ")"
   | toString (Progn(exps)) = "(progn " ^ (String.concatWith " " (List.map toString exps)) ^ ")"
 
-val fib = (Progn [
+fun fib n = (Progn [
                 Bind (Var "fib",
                       Lambda([Var "n"],
                                (If (BinOp(GreaterThan,
@@ -55,7 +55,7 @@ val fib = (Progn [
                                           Call(Var "fib", [BinOp(Add,
                                                                  Var "n",
                                                                  Int ~2)])))))),
-                Call(Var "fib", [Int 1])])
+                Call(Var "fib", [Int n])])
 
 val add3 = (Progn [
                  Bind (Var "add3",
