@@ -99,8 +99,6 @@ fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) (obj as (ops, labelDb, opLen
         ]
     fun aux () = if (!pc) < len
                  then (let val (index, arg) = opToIndex (Array.sub(ops, !pc)) in 
-                           (* printVM vm obj; *)
-                           (* TextIO.inputLine TextIO.stdIn; *)
                            Array.sub(opArray, index) arg;
                            pc := (!pc) + 1;
                            aux ()
@@ -115,15 +113,4 @@ in
 end
                                          
 end
-open DTVM
-
-(* val _ = run (new ()) *)
-(*             (Array.fromList[ *)
-(*                   Push (Lambda "label"), *)
-(*                   Gset 0, *)
-(*                   Push (Int 1), *)
-(*                   Push (Int 2), *)
-(*                   Add *)
-(*             ], [("label", 1)], 0) *)
-
 

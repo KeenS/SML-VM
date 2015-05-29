@@ -130,4 +130,3 @@ in
 end
 
 end
-(* val () = Interp.run  AST.fib *)

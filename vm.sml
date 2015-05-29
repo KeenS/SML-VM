@@ -429,7 +429,7 @@ fun printVM (vm as {pc, ...}: vm) ops = (
 exception Type
 exception Exit
 
-fun new () = {
+fun new (): vm = {
     stack = Array.array(STACK_SIZE, Undefined),
     fp = ref 0,
     sp = ref 0,
@@ -476,8 +476,6 @@ fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) (obj as (ops, labelDb, opLen
     val len = Array.length ops
     fun aux () = if (!pc) < len
                  then (
-                     (* printVM vm obj; *)
-                     (* TextIO.inputLine TextIO.stdIn; *)
                      case  (Array.sub(ops, !pc)) of
                          Not => (case pop vm of
                                     Bool x => push vm (Bool (not x))
@@ -527,15 +525,3 @@ in
 end
                                          
 end
-open VM
-
-(* val _ = run (new ()) *)
-(*             (Array.fromList[ *)
-(*                   Push (Lambda "label"), *)
-(*                   Gset 0, *)
-(*                   Push (Int 1), *)
-(*                   Push (Int 2), *)
-(*                   Add *)
-(*             ], [("label", 1)], 0) *)
-
-
