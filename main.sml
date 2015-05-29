@@ -8,9 +8,9 @@ use "vm.sml";
 use "dtvm.sml";
 use "benchmark.sml";
 
-val target = (AST.fib 24)
-val compiled = Compile.f target
-val dtcompiled = Compile.f target
+val target = (AST.fib 35)
+val compiled = VM.compile target
+val dtcompiled = DTVM.compile target
 val vm = VM.new ()
 val dtvm = DTVM.new ()
 
