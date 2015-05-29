@@ -134,7 +134,7 @@ fun run (vm as {pool, stack, fp, sp, pc, ...} : t) cops = let
 in
     aux ()
     handle Exit => ();
-    print (V.toString (Array.sub(stack, 0)))
+    print ((V.toString (Array.sub(stack, 0))) ^ "\n")
 end
                                          
 end
