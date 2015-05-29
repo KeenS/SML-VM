@@ -13,7 +13,6 @@ structure Scope: sig
     val find: t -> string -> AST.t option
 end =
 struct
-structure A = AST
 type t = (string * AST.t) list
 val empty = []
 fun add scope name value = (name , value) :: scope
@@ -22,6 +21,8 @@ fun find [] key = NONE
                                       then SOME value
                                       else find xs key
 end
+(* Scope *)
+
 structure Env: sig
     type t
     val empty: t
@@ -49,7 +50,8 @@ fun find ([], _) _ = NONE
         SOME x => SOME(x, depth)
       | NONE =>  find (pop env) key
 end
-                                       
+(* Env *)
+
 fun doMOP inter mop operand =
   let
       val (inter, op1) = f inter operand
