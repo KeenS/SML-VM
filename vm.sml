@@ -7,7 +7,7 @@ datatype opcode
   | Gt
   | Jump of string
   | Jtrue of string
-  | Call
+  | Call of int
   | Ret
   | Push of vmvalue
   | Pop
@@ -31,7 +31,7 @@ fun dumpCode Not = "Not"
   | dumpCode Gt = "Gt"
   | dumpCode (Jump x) = "Jump " ^ x
   | dumpCode (Jtrue x) = "Jtrue " ^ x
-  | dumpCode Call = "Call" 
+  | dumpCode (Call i) = "Call " ^ (Int.toString i)
   | dumpCode Ret = "Ret"
   | dumpCode (Push v) = "Push " ^ (dumpValue v)
   | dumpCode Pop = "Pop"
@@ -335,7 +335,7 @@ end
 and doCall gen lambda args = let
     val gen = List.foldl (fn (ast, gen) => compile gen ast) gen args
     val gen = compile gen lambda
-    val gen = C.add gen Call
+    val gen = C.add gen (Call (List.length args))
 in
     gen
 end
@@ -368,6 +368,12 @@ fun c ast = let
     val gen = C.add gen End
 in
     gen
+end
+
+fun f ast = let
+    val gen = c ast
+in
+    C.gen gen
 end
 end
 (* Compile *)
@@ -458,7 +464,7 @@ fun addLabels ({stack, fp, sp, pc, pool, ci, labelDb}: vm) db = {
 
 fun pushCi (vm as {ci, fp, sp, pc, ...}: vm) = (
     ci := {fp = !fp, sp = !sp, pc = !pc} :: (!ci);
-    fp := (!sp) - 1
+    fp := (!sp)
 ) 
   
 
@@ -467,7 +473,8 @@ fun popCi (vm as  {ci, fp, sp, pc, ...}: vm) = let
 in
     fp := cfp;
     sp := csp;
-    pc := cpc
+    pc := cpc;
+    ci := tl
 end
 
 fun findLabel [] key = raise Fail "ICE"
@@ -496,16 +503,19 @@ fun doOp (vm as {pool, stack, fp, sp, pc, labelDb, ...} : vm) opcode =
                          Bool true => pc := ((findLabel labelDb label) - 1)
                        | Bool false => ()
                        | _ => raise Type)
-    | Call => (case (pop vm) of
-                  Lambda label => (
-                   pushCi vm;
-                   pc := ((findLabel labelDb label) - 1))
-               | _ => raise Type)
-    | Ret => (popCi vm; pc := (!pc))
+    | Call i => (case (pop vm) of
+                    Lambda label => (
+                     pushCi vm;
+                     fp := (!fp) - i;
+                     pc := ((findLabel labelDb label) - 1))
+                  | _ => raise Type)
+    | Ret => (Array.update(stack, !fp, Array.sub(stack, (!sp) - 1));
+             popCi vm;
+             pc := (!pc))
     | Push v => push vm v
     | Pop => (pop vm;())
-    | Lref i => push vm (Array.sub(stack, (!fp) - i))
-    | Lset i =>  ((Array.update(stack, (!sp) - i, pop vm));
+    | Lref i => push vm (Array.sub(stack, (!fp) + i))
+    | Lset i =>  ((Array.update(stack, (!fp) + i, pop vm));
                     push vm (Bool true))
     | Gref i => push vm (Array.sub(pool, i))
     | Gset i =>  (Array.update(pool, i, pop vm); push vm (Bool true))
