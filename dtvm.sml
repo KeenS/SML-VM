@@ -2,70 +2,71 @@ structure DTVM =
 struct
 open VM
 
-type oparg = {string: string, int: int, vmvalue: vmvalue}
-val noArg: oparg= {string = "", int = 0, vmvalue = Undefined}
-fun intArg int: oparg = {string = "", int = int, vmvalue = Undefined}
-fun stringArg string: oparg = {string = string, int = 0, vmvalue = Undefined}
-fun vmvalueArg vmvalue: oparg = {string = "", int = 0, vmvalue = vmvalue}
+type oparg = {int: int, vmvalue: V.t}
+val noArg: oparg= {int = 0, vmvalue = V.Undefined}
+fun intArg int: oparg = {int = int, vmvalue = V.Undefined}
+fun vmvalueArg vmvalue: oparg = {int = 0, vmvalue = vmvalue}
 
-fun opToIndex Not = (0, noArg)
-  | opToIndex Add =  (1, noArg)
-  | opToIndex Eq = (2, noArg)
-  | opToIndex Gt = (3, noArg)
-  | opToIndex (Jump label) = (4, stringArg label)
-  | opToIndex (Jtrue label) = (5, stringArg label)
-  | opToIndex (Call i) = (6, intArg i)
-  | opToIndex Ret = (7, noArg)
-  | opToIndex (Push v) = (8, vmvalueArg v)
-  | opToIndex Pop = (9, noArg)
-  | opToIndex (Lref i) = (10, intArg i)
-  | opToIndex (Lset i) = (11, intArg i)
-  | opToIndex (Gref i) = (12, intArg i)
-  | opToIndex (Gset i) = (13, intArg i)
-  | opToIndex Nop = (14, noArg)
-  | opToIndex End = (15, noArg)
+fun opToIndex O.Not = (0, noArg)
+  | opToIndex O.Add =  (1, noArg)
+  | opToIndex O.Eq = (2, noArg)
+  | opToIndex O.Gt = (3, noArg)
+  | opToIndex (O.Jump label) = (4, intArg label)
+  | opToIndex (O.Jtrue label) = (5, intArg label)
+  | opToIndex (O.Call i) = (6, intArg i)
+  | opToIndex O.Ret = (7, noArg)
+  | opToIndex (O.Push v) = (8, vmvalueArg v)
+  | opToIndex O.Pop = (9, noArg)
+  | opToIndex (O.Lref i) = (10, intArg i)
+  | opToIndex (O.Lset i) = (11, intArg i)
+  | opToIndex (O.Gref i) = (12, intArg i)
+  | opToIndex (O.Gset i) = (13, intArg i)
+  | opToIndex O.Nop = (14, noArg)
+  | opToIndex O.End = (15, noArg)
 
 
-fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) (obj as (ops, labelDb, opLen)) = let
+fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) ops = let
     val len = Array.length ops
+    val cops = Array.array(len, (opToIndex O.Nop))
+    val () = Array.appi (fn (i, opcode) => Array.update(cops, i, (opToIndex opcode))) ops
     val opArray = Array.fromList [
             (* Not *)
             (fn _ =>
                 case pop vm of
-                    Bool x => push vm (Bool (not x))
+                    V.Bool x => push vm (V.Bool (not x))
                   | _ => raise Type),
             (* Add *)
             (fn _ =>
                 case (pop vm, pop vm) of
-                    (Int x, Int y) => push vm (Int (x + y))
+                    (V.Int x, V.Int y) => push vm (V.Int (x + y))
                   | _ => raise Type),
             (* Eq *)
             (fn _ =>
                 case (pop vm, pop vm) of
-                    (Int x, Int y) => push vm (Bool (x = y))
-                  | (Bool x, Bool y) => push vm (Bool (x = y))
+                    (V.Int x, V.Int y) => push vm (V.Bool (x = y))
+                  | (V.Bool x, V.Bool y) => push vm (V.Bool (x = y))
                   | _ => raise Type),
             (* Gt *)
             (fn _ =>
                 case (pop vm, pop vm) of
-                    (Int x, Int y) => push vm (Bool (x < y))
+                    (V.Int x, V.Int y) => push vm (V.Bool (x < y))
                   | _ => raise Type),
             (* Jump *)
-            (fn ({string = label, ...}: oparg) =>
-                pc := ((findLabel labelDb label) - 1)),
+            (fn ({int = label, ...}: oparg) =>
+                pc := (label - 1)),
             (* Jtrue *)
-            (fn ({string = label, ...}: oparg) =>
+            (fn ({int = label, ...}: oparg) =>
                 case pop vm of
-                    Bool true => pc := ((findLabel labelDb label) - 1)
-                  | Bool false => ()
+                    V.Bool true => pc := (label - 1)
+                  | V.Bool false => ()
                   | _ => raise Type),
             (* Call *)
             (fn ({int = i, ...}: oparg) =>
                 case (pop vm) of
-                    Lambda label => (
+                    V.Lambda label => (
                      pushCi vm;
                      fp := (!fp) - i;
-                     pc := ((findLabel labelDb label) - 1))
+                     pc := (label - 1))
                   | _ => raise Type),
             (* Ret *)
             (fn _ =>
@@ -84,31 +85,29 @@ fun run (vm as {pool, stack, fp, sp, pc, ...} : vm) (obj as (ops, labelDb, opLen
             (* Lset *)
             (fn ({int = i, ...}: oparg) =>
                 ((Array.update(stack, (!fp) + i, pop vm));
-                 push vm (Bool true))),
+                 push vm (V.Bool true))),
             (* Gref *)
             (fn ({int = i, ...}: oparg) =>
                 push vm (Array.sub(pool, i))),
             (* Gset *)
             (fn ({int = i, ...}: oparg) =>
-                (Array.update(pool, i, pop vm); push vm (Bool true))),
+                (Array.update(pool, i, pop vm); push vm (V.Bool true))),
             (* Nop *)
             (fn _ =>
                 ()),
             (fn _ =>
                 raise Exit)
         ]
-    fun aux () = if (!pc) < len
-                 then (let val (index, arg) = opToIndex (Array.sub(ops, !pc)) in 
-                           Array.sub(opArray, index) arg;
-                           pc := (!pc) + 1;
-                           aux ()
-                               
-                       end)
-                      handle Exit => ()
-                 else ()
+    fun aux () = let val (index, arg) = Array.sub(cops, !pc) in 
+                     Array.sub(opArray, index) arg;
+                     pc := (!pc) + 1;
+                     aux ()
+                         
+                 end
+                 handle Exit => ()
 in
     aux ()
-    handle _ => printVM vm obj;
+    handle _ => printVM vm ops;
     stack
 end
                                          

@@ -1,13 +1,16 @@
 use "ast.sml";
 use "id.sml";
 use "interp.sml";
+use "vmvalue.sml";
+use "opcode.sml";
+use "compile.sml";
 use "vm.sml";
 use "dtvm.sml";
 use "benchmark.sml";
 
 val target = (AST.fib 24)
-val compiled = VM.Compile.f target
-val dtcompiled = DTVM.Compile.f target
+val compiled = Compile.f target
+val dtcompiled = Compile.f target
 val vm = VM.new ()
 val dtvm = DTVM.new ()
 
